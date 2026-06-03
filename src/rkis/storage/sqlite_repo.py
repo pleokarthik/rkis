@@ -134,3 +134,105 @@ class SQLiteDocumentRepository(DocumentRepository):
         row = cursor.fetchone()
         conn.close()
         return row is not None    
+
+class SQLiteChunkRepository(ChunkRepository):
+
+    def save(self, chunk: Chunk) -> str:
+        chunk_id = chunk.id or str(uuid.uuid4())
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT OR IGNORE INTO chunks
+            (id, document_id, chunk_index, content)
+            VALUES (?, ?, ?, ?)
+        """, (
+            chunk_id,
+            chunk.document_id,
+            chunk.chunk_index,
+            chunk.content
+        ))
+        conn.commit()
+        conn.close()
+        return chunk_id
+
+    def get_by_document(self, document_id: str) -> list[Chunk]:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT * FROM chunks
+            WHERE document_id = ?
+            ORDER BY chunk_index
+        """, (document_id,))
+        rows = cursor.fetchall()
+        conn.close()
+        return [
+            Chunk(
+                id=row["id"],
+                document_id=row["document_id"],
+                chunk_index=row["chunk_index"],
+                content=row["content"]
+            )
+            for row in rows
+        ]
+
+
+class SQLiteConceptLinkRepository(ConceptLinkRepository):
+
+    def save(self, link: ConceptLink) -> str:
+        link_id = link.id or str(uuid.uuid4())
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT OR IGNORE INTO concept_links
+            (id, document_id, concept_tag, supersedes_id, verified)
+            VALUES (?, ?, ?, ?, ?)
+        """, (
+            link_id,
+            link.document_id,
+            link.concept_tag,
+            link.supersedes_id,
+            link.verified
+        ))
+        conn.commit()
+        conn.close()
+        return link_id
+
+    def get_by_document(self, document_id: str) -> list[ConceptLink]:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT * FROM concept_links
+            WHERE document_id = ?
+        """, (document_id,))
+        rows = cursor.fetchall()
+        conn.close()
+        return [
+            ConceptLink(
+                id=row["id"],
+                document_id=row["document_id"],
+                concept_tag=row["concept_tag"],
+                supersedes_id=row["supersedes_id"],
+                verified=bool(row["verified"])
+            )
+            for row in rows
+        ]
+
+    def get_by_tag(self, tag: str) -> list[ConceptLink]:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT * FROM concept_links
+            WHERE concept_tag = ?
+        """, (tag,))
+        rows = cursor.fetchall()
+        conn.close()
+        return [
+            ConceptLink(
+                id=row["id"],
+                document_id=row["document_id"],
+                concept_tag=row["concept_tag"],
+                supersedes_id=row["supersedes_id"],
+                verified=bool(row["verified"])
+            )
+            for row in rows
+        ]
