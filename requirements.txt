@@ -1,0 +1,15 @@
+llama-index
+llama-index-readers-file
+arxiv
+langchain
+langgraph
+langsmith
+openai
+qdrant-client
+pinecone-client
+weaviate-client
+ragas
+deepeval
+sentence-transformers
+python-dotenv
+httpx
