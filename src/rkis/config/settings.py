@@ -1,5 +1,6 @@
 import os
 from dotenv import load_dotenv
+from pathlib import Path
 
 load_dotenv()
 
@@ -8,7 +9,7 @@ class Settings:
     LANGSMITH_API_KEY: str = os.getenv("LANGSMITH_API_KEY", "")
     LANGSMITH_PROJECT: str = os.getenv("LANGSMITH_PROJECT", "rkis")
     
-    BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+    BASE_DIR: Path = Path(__file__).resolve().parent.parent.parent.parent
     DB_PATH: str = os.path.join(BASE_DIR, "data", "rkis.db")
     
     EMBEDDING_MODEL: str = "text-embedding-3-small"
@@ -22,4 +23,5 @@ class Settings:
     ARXIV_MAX_RESULTS: int = 50
     ARXIV_CATEGORIES: list = ["cs.AI", "cs.LG", "cs.CL"]
 
+    OLLAMA_BASE_URL: str = "http://localhost:11434"
 settings = Settings()
