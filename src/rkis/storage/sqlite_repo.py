@@ -1,3 +1,4 @@
+import os
 import sqlite3
 import uuid
 import json
@@ -12,6 +13,7 @@ from src.rkis.storage.repository import (
 from src.rkis.config.settings import settings
 
 def get_connection():
+    os.makedirs(os.path.dirname(settings.DB_PATH), exist_ok=True)
     conn = sqlite3.connect(settings.DB_PATH)
     conn.row_factory = sqlite3.Row
     return conn
