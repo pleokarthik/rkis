@@ -4,6 +4,18 @@ from pathlib import Path
 
 load_dotenv()
 
+
+def _enable_langsmith_tracing():
+    api_key = os.getenv("LANGSMITH_API_KEY", "")
+    if api_key:
+        os.environ.setdefault("LANGCHAIN_TRACING_V2", "true")
+        os.environ.setdefault("LANGCHAIN_API_KEY", api_key)
+        os.environ.setdefault("LANGCHAIN_PROJECT", os.getenv("LANGSMITH_PROJECT", "rkis"))
+
+
+_enable_langsmith_tracing()
+
+
 class Settings:
     OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
     LANGSMITH_API_KEY: str = os.getenv("LANGSMITH_API_KEY", "")
