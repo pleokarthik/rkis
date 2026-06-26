@@ -42,10 +42,16 @@ def init_db():
             document_id TEXT NOT NULL,
             chunk_index INTEGER NOT NULL,
             content TEXT NOT NULL,
+            concept_tags TEXT DEFAULT '[]',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (document_id) REFERENCES documents(id)
         )
     """)
+
+    try:
+        cursor.execute("ALTER TABLE chunks ADD COLUMN concept_tags TEXT DEFAULT '[]'")
+    except sqlite3.OperationalError:
+        pass
 
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS concept_links (
@@ -144,19 +150,21 @@ class SQLiteDocumentRepository(DocumentRepository):
 
 class SQLiteChunkRepository(ChunkRepository):
 
-    def save(self, chunk: Chunk) -> str:
+    def save(self, chunk: Chunk, concept_tags: list[str] | None = None) -> str:
         chunk_id = chunk.id or str(uuid.uuid4())
+        tags_json = json.dumps(concept_tags or [])
         conn = get_connection()
         cursor = conn.cursor()
         cursor.execute("""
             INSERT OR IGNORE INTO chunks
-            (id, document_id, chunk_index, content)
-            VALUES (?, ?, ?, ?)
+            (id, document_id, chunk_index, content, concept_tags)
+            VALUES (?, ?, ?, ?, ?)
         """, (
             chunk_id,
             chunk.document_id,
             chunk.chunk_index,
-            chunk.content
+            chunk.content,
+            tags_json,
         ))
         conn.commit()
         conn.close()

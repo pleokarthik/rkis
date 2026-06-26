@@ -5,6 +5,8 @@ from llm.ollama_llm import OllamaLLM
 from retrieval.bm25_retriever import BM25Retriever
 from retrieval.rrf_fusion import reciprocal_rank_fusion
 from query.reranker import get_reranker
+from generation.context_compressor import compress_context
+from validation.answer_validator import validate_answer, CONFIDENCE_THRESHOLD
 from config.settings import settings
 
 
@@ -24,11 +26,17 @@ class QueryPipeline:
         fused = reciprocal_rank_fusion(dense_results, bm25_results)
         ranked = self.reranker.rerank(query, fused)[:settings.TOP_K]
 
-        context = self._build_context(ranked)
+        raw_context = self._build_context(ranked)
+        context = compress_context(raw_context)
+
         prompt = self._build_prompt(query, context)
         answer = self.llm.complete(prompt)
 
-        return QueryResult(answer=answer, sources=ranked)
+        confidence = validate_answer(answer, raw_context)
+        if confidence < CONFIDENCE_THRESHOLD:
+            answer = f"[LOW CONFIDENCE ({confidence:.2f})]\n{answer}"
+
+        return QueryResult(answer=answer, sources=ranked, confidence=confidence)
 
     def _build_context(self, results: list[SearchResult]) -> str:
         parts = []

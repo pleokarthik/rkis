@@ -48,6 +48,7 @@ class SearchResult:
 class QueryResult:
     answer: str
     sources: list[SearchResult]
+    confidence: float = 1.0
 
 class TrustTier(Enum):
     T1 = "t1"
@@ -75,3 +76,4 @@ class ProgressionResult:
     topic: str
     narrative: str
     timeline: list[DocumentContribution]
+    confidence: float = 1.0

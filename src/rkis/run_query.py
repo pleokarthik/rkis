@@ -23,11 +23,13 @@ if intent == QueryIntent.EVOLUTION:
     print("\n" + "=" * 60)
     print("\nProgression Narrative:")
     print(result.narrative)
+    print(f"\nConfidence: {result.confidence:.2f}")
 else:
     pipeline = QueryPipeline()
     result = pipeline.run(query)
 
     print(f"\nAnswer:\n{result.answer}")
+    print(f"\nConfidence: {result.confidence:.2f}")
     print("\nSources:")
     for i, source in enumerate(result.sources, 1):
         print(f"  [{i}] doc_id={source.payload.get('document_id')} "

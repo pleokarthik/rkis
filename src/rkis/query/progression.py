@@ -5,6 +5,8 @@ from embeddings import get_embedder
 from retrieval.bm25_retriever import BM25Retriever
 from retrieval.rrf_fusion import reciprocal_rank_fusion
 from query.reranker import get_reranker
+from generation.context_compressor import compress_context
+from validation.answer_validator import validate_answer, CONFIDENCE_THRESHOLD
 from llm.ollama_llm import OllamaLLM
 from config.settings import settings
 
@@ -42,12 +44,15 @@ class ProgressionPipeline:
                 documents.append(doc)
         documents.sort(key=lambda d: d.published_at)
 
+        all_raw_context_parts = []
         timeline = []
         for doc in documents:
             chunks = doc_chunks[doc.id][:3]
-            context = "\n\n---\n\n".join(
+            raw_context = "\n\n---\n\n".join(
                 r.payload.get("content", "") for r in chunks
             )
+            all_raw_context_parts.append(raw_context)
+            context = compress_context(raw_context)
             contribution = self._extract_contribution(topic, doc.title, context)
             timeline.append(DocumentContribution(
                 doc_id=doc.id,
@@ -58,7 +63,16 @@ class ProgressionPipeline:
             ))
 
         narrative = self._synthesize(topic, timeline)
-        return ProgressionResult(topic=topic, narrative=narrative, timeline=timeline)
+
+        full_context = "\n\n".join(all_raw_context_parts)
+        confidence = validate_answer(narrative, full_context)
+        if confidence < CONFIDENCE_THRESHOLD:
+            narrative = f"[LOW CONFIDENCE ({confidence:.2f})]\n{narrative}"
+
+        return ProgressionResult(
+            topic=topic, narrative=narrative,
+            timeline=timeline, confidence=confidence,
+        )
 
     def _extract_contribution(self, topic: str, title: str, context: str) -> str:
         prompt = (

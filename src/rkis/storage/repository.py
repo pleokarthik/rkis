@@ -29,7 +29,7 @@ class DocumentRepository(ABC):
 class ChunkRepository(ABC):
 
     @abstractmethod
-    def save(self, chunk: Chunk) -> str:
+    def save(self, chunk: Chunk, concept_tags: list[str] | None = None) -> str:
         pass
 
     @abstractmethod
