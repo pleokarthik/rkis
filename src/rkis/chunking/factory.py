@@ -1,6 +1,6 @@
-from src.rkis.chunking.base import ChunkingStrategy
-from src.rkis.chunking.fixed import FixedSizeChunker
-from src.rkis.chunking.sentence import SentenceWindowChunker
+from chunking.base import ChunkingStrategy
+from chunking.fixed import FixedSizeChunker
+from chunking.sentence import SentenceWindowChunker
 
 _STRATEGIES = {
     "fixed": FixedSizeChunker,

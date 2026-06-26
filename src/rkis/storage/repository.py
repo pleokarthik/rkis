@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from typing import Optional
-from src.rkis.core.models import Document, Chunk, ConceptLink
+from core.models import Document, Chunk, ConceptLink
 
 
 class DocumentRepository(ABC):
@@ -21,6 +21,10 @@ class DocumentRepository(ABC):
     def exists(self, url: str) -> bool:
         pass
 
+    @abstractmethod
+    def delete(self, doc_id: str) -> None:
+        pass
+
 
 class ChunkRepository(ABC):
 
@@ -30,6 +34,10 @@ class ChunkRepository(ABC):
 
     @abstractmethod
     def get_by_document(self, document_id: str) -> list[Chunk]:
+        pass
+
+    @abstractmethod
+    def delete_by_document(self, document_id: str) -> None:
         pass
 
 

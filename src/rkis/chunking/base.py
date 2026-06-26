@@ -1,6 +1,6 @@
 from abc import ABC,abstractmethod
 from typing import List
-from src.rkis.core.models import Document, Chunk
+from core.models import Document, Chunk
 
 class ChunkingStrategy(ABC):
 

@@ -1,7 +1,7 @@
 from typing import List
 from openai import OpenAI
-from src.rkis.embeddings.base import BaseEmbedder
-from src.rkis.config.settings import settings
+from embeddings.base import BaseEmbedder
+from config.settings import settings
 
 
 class OpenAIEmbedder(BaseEmbedder):

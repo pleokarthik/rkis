@@ -1,5 +1,5 @@
-from src.rkis.vectorstores.base import BaseVectorStore
-from src.rkis.vectorstores.qdrant_store import QdrantVectorStore
+from vectorstores.base import BaseVectorStore
+from vectorstores.qdrant_store import QdrantVectorStore
 
 
 _STORES = {

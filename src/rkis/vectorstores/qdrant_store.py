@@ -5,15 +5,16 @@ from qdrant_client.models import (
     VectorParams,
     PointStruct,
     Filter,
+    FilterSelector,
     FieldCondition,
     MatchValue,
 )
-from src.rkis.vectorstores.base import BaseVectorStore
-from src.rkis.config.settings import settings
-
+from vectorstores.base import BaseVectorStore
+from config.settings import settings
+from core.models import SearchResult
 
 COLLECTION_NAME = "rkis_chunks"
-VECTOR_SIZE = 1536  # text-embedding-3-small output dimension
+VECTOR_SIZE = 768  # text-embedding-3-small output dimension
 
 
 class QdrantVectorStore(BaseVectorStore):
@@ -56,11 +57,11 @@ class QdrantVectorStore(BaseVectorStore):
         )
 
     def search(
-    self,
-    query_vector: List[float],
-    top_k: int = 10,
-    filters: Dict[str, Any] | None = None,
-    ) -> List[Dict[str, Any]]:    
+        self,
+        query_vector: List[float],
+        top_k: int = 10,
+        filters: Dict[str, Any] | None = None,
+    ) -> List[SearchResult]:
         qdrant_filter = None
         if filters:
             qdrant_filter = Filter(
@@ -82,11 +83,11 @@ class QdrantVectorStore(BaseVectorStore):
         ).points
 
         return [
-            {
-                "chunk_id": hit.id,
-                "score": hit.score,
-                "payload": hit.payload,
-            }
+            SearchResult(
+                chunk_id=str(hit.id),
+                score=hit.score,
+                payload=(hit.payload or {}),
+            )
             for hit in results
         ]
 
@@ -94,4 +95,14 @@ class QdrantVectorStore(BaseVectorStore):
         self.client.delete(
             collection_name=COLLECTION_NAME,
             points_selector=[chunk_id],
+        )
+
+    def delete_by_document(self, document_id: str) -> None:
+        self.client.delete(
+            collection_name=COLLECTION_NAME,
+            points_selector=FilterSelector(
+                filter=Filter(
+                    must=[FieldCondition(key="document_id", match=MatchValue(value=document_id))]
+                )
+            ),
         )

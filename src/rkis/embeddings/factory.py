@@ -1,6 +1,6 @@
-from src.rkis.embeddings.base import BaseEmbedder
-from src.rkis.embeddings.openai_embedder import OpenAIEmbedder
-from src.rkis.embeddings.ollama_embedder import OllamaEmbedder
+from embeddings.base import BaseEmbedder
+from embeddings.openai_embedder import OpenAIEmbedder
+from embeddings.ollama_embedder import OllamaEmbedder
 
 
 _EMBEDDERS = {

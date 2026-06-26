@@ -2,15 +2,14 @@ import os
 import sqlite3
 import uuid
 import json
-from datetime import datetime
 from typing import Optional
-from src.rkis.core.models import Document, Chunk, ConceptLink
-from src.rkis.storage.repository import (
+from core.models import Document, Chunk, ConceptLink
+from storage.repository import (
     DocumentRepository,
     ChunkRepository,
     ConceptLinkRepository
 )
-from src.rkis.config.settings import settings
+from config.settings import settings
 
 def get_connection():
     os.makedirs(os.path.dirname(settings.DB_PATH), exist_ok=True)
@@ -135,7 +134,13 @@ class SQLiteDocumentRepository(DocumentRepository):
         cursor.execute("SELECT id FROM documents WHERE url = ?", (url,))
         row = cursor.fetchone()
         conn.close()
-        return row is not None    
+        return row is not None
+
+    def delete(self, doc_id: str) -> None:
+        conn = get_connection()
+        conn.execute("DELETE FROM documents WHERE id = ?", (doc_id,))
+        conn.commit()
+        conn.close()
 
 class SQLiteChunkRepository(ChunkRepository):
 
@@ -176,6 +181,12 @@ class SQLiteChunkRepository(ChunkRepository):
             )
             for row in rows
         ]
+
+    def delete_by_document(self, document_id: str) -> None:
+        conn = get_connection()
+        conn.execute("DELETE FROM chunks WHERE document_id = ?", (document_id,))
+        conn.commit()
+        conn.close()
 
 
 class SQLiteConceptLinkRepository(ConceptLinkRepository):

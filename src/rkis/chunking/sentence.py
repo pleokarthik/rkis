@@ -1,7 +1,7 @@
 import uuid
 from typing import List
-from src.rkis.core.models import Document, Chunk
-from src.rkis.chunking.base import ChunkingStrategy
+from core.models import Document, Chunk
+from chunking.base import ChunkingStrategy
 
 class SentenceWindowChunker(ChunkingStrategy):
     """
