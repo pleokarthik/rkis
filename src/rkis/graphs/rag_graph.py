@@ -24,6 +24,7 @@ class RAGState(TypedDict, total=False):
     answer: str
     confidence_score: float
     sources: list[SearchResult]
+    rerank_scores: list[float]
     # evolution-specific
     timeline: list[DocumentContribution]
 
