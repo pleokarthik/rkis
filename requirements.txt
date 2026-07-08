@@ -10,5 +10,6 @@ python-dotenv
 httpx
 rank-bm25
 requests
+gaptrace-capture
 --extra-index-url https://download.pytorch.org/whl/cpu
 torch==2.5.1+cpu
