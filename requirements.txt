@@ -1,18 +1,14 @@
-llama-index
-llama-index-readers-file
 arxiv
-langchain
 langgraph
+langchain_community
 langsmith
 openai
 qdrant-client
-pinecone-client
-weaviate-client
 ragas
-deepeval
---extra-index-url https://download.pytorch.org/whl/cpu
-torch==2.5.1+cpu
 sentence-transformers
 python-dotenv
 httpx
 rank-bm25
+requests
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.5.1+cpu
