@@ -1,5 +1,7 @@
+import contextvars
 from typing import TypedDict
 from langgraph.graph import StateGraph, START, END
+from gaptrace_core import ChunkRecord, TokenBudget
 
 from core.models import SearchResult, QueryResult, ProgressionResult, DocumentContribution
 from routing.query_router import QueryRouter, QueryIntent
@@ -19,6 +21,7 @@ class RAGState(TypedDict, total=False):
     query: str
     intent: str
     chunks: list[SearchResult]
+    retrieval_paths: dict[str, str]
     raw_context: str
     compressed_context: str
     answer: str
@@ -38,6 +41,52 @@ _doc_repo = SQLiteDocumentRepository()
 _llm = OllamaLLM(model="phi3")
 
 
+# ── gaptrace capture ─────────────────────────────────────────────────────────
+# Holds the active gaptrace Capture for the query currently running through
+# this graph, or a no-op stand-in when nothing is capturing (e.g. run_eval.py,
+# run_progression.py, or any other caller of rag_graph.invoke() that doesn't
+# opt in). contextvars rather than a plain module global so a value set by
+# one invocation can never leak into a concurrent one; nodes read it fresh on
+# every call rather than having it baked into the graph, so the
+# already-compiled `rag_graph` below never needs to be rebuilt per query.
+class _NoOpCapture:
+    def chunks(self, *args, **kwargs) -> None:
+        pass
+
+    def context(self, *args, **kwargs) -> None:
+        pass
+
+    def response(self, *args, **kwargs) -> None:
+        pass
+
+
+_active_capture: contextvars.ContextVar = contextvars.ContextVar(
+    "active_capture", default=_NoOpCapture()
+)
+
+
+def _retrieval_path(chunk_id, dense_ids: set, bm25_ids: set) -> str:
+    in_dense = chunk_id in dense_ids
+    in_bm25 = chunk_id in bm25_ids
+    if in_dense and in_bm25:
+        return "both"
+    return "ann" if in_dense else "bm25"
+
+
+def _token_budget(context: str) -> TokenBudget:
+    chunk_tokens = len(context) // 4
+    system_tokens = 200
+    query_tokens = 50
+    headroom = 4096 - chunk_tokens - system_tokens - query_tokens
+    return TokenBudget(
+        total_limit=4096,
+        chunks_allocated=chunk_tokens,
+        history_allocated=query_tokens,
+        system_allocated=system_tokens,
+        headroom=max(headroom, 0),
+    )
+
+
 def route_node(state: RAGState) -> RAGState:
     intent = _router.classify(state["query"])
     return {"intent": intent.value}
@@ -53,13 +102,36 @@ def retrieve_node(state: RAGState) -> RAGState:
     bm25_results = _bm25.search(query, top_k=fetch_k)
 
     fused = reciprocal_rank_fusion(dense_results, bm25_results)
-    return {"chunks": fused}
+
+    dense_ids = {r.chunk_id for r in dense_results}
+    bm25_ids = {r.chunk_id for r in bm25_results}
+    retrieval_paths = {
+        r.chunk_id: _retrieval_path(r.chunk_id, dense_ids, bm25_ids)
+        for r in fused
+    }
+
+    cap = _active_capture.get()
+    cap.chunks([
+        ChunkRecord(
+            chunk_id=str(r.chunk_id),
+            source_doc_id=r.payload.get("document_id", ""),
+            content=r.payload.get("content", ""),
+            token_count=len(r.payload.get("content", "")) // 4,
+            retrieval_score=float(r.score),
+            retrieval_path=retrieval_paths[r.chunk_id],
+        )
+        for r in fused
+    ])
+
+    return {"chunks": fused, "retrieval_paths": retrieval_paths}
 
 
 def rerank_node(state: RAGState) -> RAGState:
     query = state["query"]
     is_evolution = state["intent"] == QueryIntent.EVOLUTION.value
     chunks = state["chunks"]
+    retrieval_paths = state.get("retrieval_paths", {})
+    retrieval_scores = {r.chunk_id: r.score for r in chunks}
 
     ranked = _reranker.rerank(query, chunks)
     if not is_evolution:
@@ -67,12 +139,32 @@ def rerank_node(state: RAGState) -> RAGState:
 
     parts = []
     total = 0
+    surviving_ids = set()
     for r in ranked:
         text = r.payload.get("content", "")
         if total + len(text) > settings.MAX_CONTEXT_CHARS:
             break
         parts.append(text)
         total += len(text)
+        surviving_ids.add(r.chunk_id)
+
+    cap = _active_capture.get()
+    cap.chunks(
+        [
+            ChunkRecord(
+                chunk_id=str(r.chunk_id),
+                source_doc_id=r.payload.get("document_id", ""),
+                content=r.payload.get("content", ""),
+                token_count=len(r.payload.get("content", "")) // 4,
+                retrieval_score=retrieval_scores.get(r.chunk_id),
+                rerank_score=float(r.score),
+                retrieval_path=retrieval_paths.get(r.chunk_id),
+                truncated=(r.chunk_id not in surviving_ids),
+            )
+            for r in ranked
+        ],
+        requested_count=settings.TOP_K,
+    )
 
     return {
         "sources": ranked,
@@ -81,7 +173,10 @@ def rerank_node(state: RAGState) -> RAGState:
 
 
 def compress_node(state: RAGState) -> RAGState:
-    return {"compressed_context": compress_context(state["raw_context"])}
+    compressed = compress_context(state["raw_context"])
+    cap = _active_capture.get()
+    cap.context(compressed, _token_budget(compressed))
+    return {"compressed_context": compressed}
 
 
 def generate_factual_node(state: RAGState) -> RAGState:
@@ -161,6 +256,8 @@ def validate_node(state: RAGState) -> RAGState:
     answer = state["answer"]
     if confidence < CONFIDENCE_THRESHOLD:
         answer = f"[LOW CONFIDENCE ({confidence:.2f})]\n{answer}"
+    cap = _active_capture.get()
+    cap.response(answer)
     return {"answer": answer, "confidence_score": confidence}
 
 
