@@ -31,6 +31,7 @@ class Settings:
     CHUNK_OVERLAP: int = 50
     TOP_K: int = 5
     MAX_CONTEXT_CHARS: int = 4000
+    EVOLUTION_MAX_DOCUMENTS: int = 5
     
     ARXIV_MAX_RESULTS: int = 50
     ARXIV_CATEGORIES: list = ["cs.AI", "cs.LG", "cs.CL"]

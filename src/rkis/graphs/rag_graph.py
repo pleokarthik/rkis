@@ -114,6 +114,7 @@ def generate_evolution_node(state: RAGState) -> RAGState:
         if doc:
             documents.append(doc)
     documents.sort(key=lambda d: d.published_at)
+    documents = documents[:settings.EVOLUTION_MAX_DOCUMENTS]
 
     timeline = []
     for doc in documents:
