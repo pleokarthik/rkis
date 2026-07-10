@@ -16,10 +16,18 @@ from unittest.mock import patch, MagicMock
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src", "rkis"))
 
 # graphs.rag_graph instantiates real singletons at import time (embedded
-# Qdrant client, cross-encoder reranker, BM25 index, query router). None of
-# those are exercised by generate_evolution_node, so they're stubbed out
-# before import to keep this test hermetic and fast.
-with patch("vectorstores.qdrant_store.QdrantVectorStore.__init__", return_value=None), \
+# Qdrant client, cross-encoder reranker, BM25 index, query router,
+# semantic cache). None of those are exercised by generate_evolution_node,
+# so they're stubbed out before import to keep this test hermetic and fast.
+# QdrantVectorStore's __init__ needs a fake .client (not just a no-op) since
+# SemanticCache(_vector_store.client) reads that attribute at module-import
+# time, before SemanticCache's own (also patched) __init__ ever runs.
+def _fake_qdrant_vector_store_init(self):
+    self.client = MagicMock()
+
+
+with patch("vectorstores.qdrant_store.QdrantVectorStore.__init__", _fake_qdrant_vector_store_init), \
+     patch("vectorstores.semantic_cache.SemanticCache.__init__", return_value=None), \
      patch("query.reranker.get_reranker", return_value=MagicMock()), \
      patch("retrieval.bm25_retriever.BM25Retriever.__init__", return_value=None), \
      patch("routing.query_router.QueryRouter.__init__", return_value=None):

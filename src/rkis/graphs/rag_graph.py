@@ -7,6 +7,7 @@ from core.models import SearchResult, QueryResult, ProgressionResult, DocumentCo
 from routing.query_router import QueryRouter, QueryIntent
 from embeddings import get_embedder
 from vectorstores.qdrant_store import QdrantVectorStore
+from vectorstores.semantic_cache import SemanticCache
 from retrieval.bm25_retriever import BM25Retriever
 from retrieval.rrf_fusion import reciprocal_rank_fusion
 from query.reranker import get_reranker
@@ -20,6 +21,8 @@ from config.settings import settings
 class RAGState(TypedDict, total=False):
     query: str
     intent: str
+    query_vector: list[float]
+    cache_hit: bool
     chunks: list[SearchResult]
     retrieval_paths: dict[str, str]
     raw_context: str
@@ -35,6 +38,7 @@ class RAGState(TypedDict, total=False):
 _router = QueryRouter()
 _embedder = get_embedder("ollama")
 _vector_store = QdrantVectorStore()
+_semantic_cache = SemanticCache(_vector_store.client)
 _bm25 = BM25Retriever()
 _reranker = get_reranker()
 _doc_repo = SQLiteDocumentRepository()
@@ -57,6 +61,9 @@ class _NoOpCapture:
         pass
 
     def response(self, *args, **kwargs) -> None:
+        pass
+
+    def semantic_cache(self, *args, **kwargs) -> None:
         pass
 
 
@@ -92,12 +99,51 @@ def route_node(state: RAGState) -> RAGState:
     return {"intent": intent.value}
 
 
+def cache_check_node(state: RAGState) -> RAGState:
+    """Semantic cache lookup, keyed on (query, intent). Runs after
+    route_node (intent is part of the cache key) and before retrieve_node
+    (a hit skips retrieval/rerank/generation entirely). Embeds the query
+    once here and threads the vector through state so retrieve_node and,
+    on a miss, validate_node's cache write don't re-embed the same text."""
+    query = state["query"]
+    intent = state["intent"]
+    cap = _active_capture.get()
+
+    query_vector = _embedder.embed_text(query)
+    hit = _semantic_cache.search(query_vector, intent, settings.SEMANTIC_CACHE_THRESHOLD)
+
+    if hit is not None:
+        answer, score, cached_at = hit
+        cap.semantic_cache(
+            checked=True,
+            hit=True,
+            similarity_score=score,
+            threshold=settings.SEMANTIC_CACHE_THRESHOLD,
+            cached_at=cached_at,
+        )
+        # A hit routes straight to END (retrieve/rerank/compress/generate/
+        # validate never run), so validate_node's cap.response() call never
+        # fires either. That call is what auto-commits the run — without
+        # calling it here too, this capture (including the semantic_cache()
+        # data just above) would never be written to the store.
+        cap.response(answer)
+        return {
+            "cache_hit": True,
+            "query_vector": query_vector,
+            "answer": answer,
+            "confidence_score": 1.0,
+        }
+
+    cap.semantic_cache(checked=True, hit=False, threshold=settings.SEMANTIC_CACHE_THRESHOLD)
+    return {"cache_hit": False, "query_vector": query_vector}
+
+
 def retrieve_node(state: RAGState) -> RAGState:
     query = state["query"]
     is_evolution = state["intent"] == QueryIntent.EVOLUTION.value
     fetch_k = settings.TOP_K * (6 if is_evolution else 2)
 
-    query_vector = _embedder.embed_text(query)
+    query_vector = state["query_vector"]
     dense_results = _vector_store.search(query_vector, top_k=fetch_k)
     bm25_results = _bm25.search(query, top_k=fetch_k)
 
@@ -258,7 +304,16 @@ def validate_node(state: RAGState) -> RAGState:
         answer = f"[LOW CONFIDENCE ({confidence:.2f})]\n{answer}"
     cap = _active_capture.get()
     cap.response(answer)
+
+    # validate_node only runs on a cache miss (a hit routes cache_check_node
+    # straight to END), so this is always a fresh answer worth storing.
+    _semantic_cache.store(state["query_vector"], answer, state["intent"])
+
     return {"answer": answer, "confidence_score": confidence}
+
+
+def _route_after_cache_check(state: RAGState) -> str:
+    return "hit" if state.get("cache_hit") else "miss"
 
 
 def _route_after_rerank(state: RAGState) -> str:
@@ -271,6 +326,7 @@ def build_rag_graph() -> StateGraph:
     graph = StateGraph(RAGState)
 
     graph.add_node("route", route_node)
+    graph.add_node("cache_check", cache_check_node)
     graph.add_node("retrieve", retrieve_node)
     graph.add_node("rerank", rerank_node)
     graph.add_node("compress", compress_node)
@@ -279,7 +335,11 @@ def build_rag_graph() -> StateGraph:
     graph.add_node("validate", validate_node)
 
     graph.add_edge(START, "route")
-    graph.add_edge("route", "retrieve")
+    graph.add_edge("route", "cache_check")
+    graph.add_conditional_edges("cache_check", _route_after_cache_check, {
+        "hit": END,
+        "miss": "retrieve",
+    })
     graph.add_edge("retrieve", "rerank")
     graph.add_conditional_edges("rerank", _route_after_rerank, {
         "compress": "compress",
